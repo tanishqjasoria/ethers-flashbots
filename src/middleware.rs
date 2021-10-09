@@ -13,6 +13,8 @@ use ethers_providers::{FromErr, Middleware, PendingTransaction};
 use ethers_signers::Signer;
 use thiserror::Error;
 use url::Url;
+use ethers_core::types::TransactionRequest;
+use ethers::middleware::SignerMiddleware;
 
 /// Errors for the Flashbots middleware.
 #[derive(Error, Debug)]
@@ -175,6 +177,41 @@ impl<M: Middleware, S: Signer> FlashbotsMiddleware<M, S> {
             bundle.transaction_hashes(),
             self.provider(),
         ))
+    }
+
+    pub async fn send_carrier_txn<M,S>(
+        &self,
+        bundle: &BundleRequest,
+        validator_public_key: String,
+        mut carrier_txn: TransactionRequest,
+        client: &SignerMiddleware<M, S>
+    ) -> Result<PendingTransaction<'_, Self::Provider>, Self::Error>
+    where
+        M: 'static + Middleware,
+        S: 'static + Signer
+    {
+        // The target block must be set
+        bundle
+            .block()
+            .ok_or(FlashbotsMiddlewareError::MissingParameters)?;
+
+        // `min_timestamp` and `max_timestamp` must both either be unset or set.
+        if bundle.min_timestamp().xor(bundle.max_timestamp()).is_some() {
+            return Err(FlashbotsMiddlewareError::MissingParameters);
+        }
+        let mev_prefix: Bytes = "AAA".into();
+        let validator_pub_key_bytes: Bytes = validator_public_key.into();
+        let rlp_encoded:Bytes = bundle.rlp_serialize();
+
+        let mut txn_payload = vec![];
+        txn_payload.extend_from_slice(mev_prefix.as_ref());
+        txn_payload.extend_from_slice(validator_pub_key_bytes.as_ref());
+        txn_payload.extend_from_slice(rlp_encoded.as_ref());
+        txn_payload.into();
+
+        carrier_txn.data = txn_payload.into();
+
+        client.send_transaction(carrier_txn, None)
     }
 
     /// Get stats for a particular bundle.
