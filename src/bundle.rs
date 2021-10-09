@@ -232,6 +232,44 @@ impl BundleRequest {
         // encoded.into()
     }
 
+    pub fn rlp_serialize(&self) -> Bytes {
+        let mut rlp = RlpStream::new();
+        rlp.begin_unbounded_list();
+
+        // Add rlp encoded list of transactions
+        let rlp_encoded_txns = self.rlp_serialize_txns();
+        rlp.append(&rlp_encoded_txns.as_ref());
+
+        // Add blockNumber
+        rlp.append(&self.target_block);
+
+        if self.max_timestamp.is_some() {
+            rlp.append(&self.min_timestamp);
+            rlp.append(&self.max_timestamp);
+        } else {
+            rlp.append(&"");
+            rlp.append(&"");
+        }
+
+        let mut rlp_reverting_txn = RlpStream::new();
+        rlp_reverting_txn.begin_unbounded_list();
+
+        for val in self.revertible_transaction_hashes {
+            rlp_reverting_txn.append(&val.as_ref());
+        }
+        rlp_reverting_txn.finalize_unbounded_list();
+        let rlp_reverting_txn_bytes: Bytes = rlp_reverting_txn.out().freeze().into();
+        rlp.append(&rlp_reverting_txn_bytes.as_ref());
+
+        rlp.finalize_unbounded_list();
+
+        let rlp_bytes: Bytes = rlp.out().freeze().into();
+        let mut encoded = vec![];
+
+        encoded.extend_from_slice(rlp_bytes.as_ref());
+        encoded.into()
+    }
+
 }
 
 /// Details of a simulated transaction.
