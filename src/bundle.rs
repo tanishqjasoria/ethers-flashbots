@@ -2,7 +2,7 @@ use crate::utils::{deserialize_optional_h160, deserialize_u256, deserialize_u64}
 use chrono::{DateTime, Utc};
 use ethers_core::{
     types::{transaction::response::Transaction, Address, Bytes, TxHash, H256, U256, U64},
-    utils::keccak256,
+    utils::{keccak256, rlp::RlpStream},
 };
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -206,6 +206,32 @@ impl BundleRequest {
         self.max_timestamp = Some(timestamp);
         self
     }
+
+    pub fn rlp_serialize_txns(&self) -> Bytes {
+
+        let raw_txs: Vec<Bytes> = self.transactions
+            .iter()
+            .map(|tx| match tx {
+                BundleTransaction::Signed(inner) => inner.rlp(),
+                BundleTransaction::Raw(inner) => inner.clone(),
+            })
+            .collect();
+        let raw_txn_iter = raw_txs.iter();
+        let mut rlp = RlpStream::new();
+        rlp.begin_unbounded_list();
+        for val in raw_txn_iter {
+            rlp.append(&val.as_ref());
+        }
+        rlp.finalize_unbounded_list();
+
+        let rlp_bytes: Bytes = rlp.out().freeze().into();
+        rlp_bytes
+        // let mut encoded = vec![];
+        //
+        // encoded.extend_from_slice(rlp_bytes.as_ref());
+        // encoded.into()
+    }
+
 }
 
 /// Details of a simulated transaction.
